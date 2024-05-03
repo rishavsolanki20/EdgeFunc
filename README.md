@@ -1,0 +1,1 @@
+-To Run this file go to hello-world direcory and  deno run --allow-net --unstable-sloppy-imports --allow-env index.ts   
