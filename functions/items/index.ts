@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import { corsHeaders } from "../cors.ts";
 
-console.log(`Function hello-world up and running!`);
+console.log(`Function items  and running!`);
 
 // Define CartItem interface for type safety
 interface CartItem {
@@ -57,24 +57,7 @@ Deno.serve(async (req: Request) => {
         status: 200,
       });
     }
-    if (req.body) {
-      const requestBody: CartItem = await req.json();
-      const { name, price } = requestBody;
 
-      const { error } = await supabaseClient.from("cart").insert([
-        {
-          name,
-          price,
-          user_id,
-        },
-      ]);
-
-      // Handle insertion errors
-      if (error) {
-        console.log("Error inserting data into 'cart': ", error);
-        throw error;
-      }
-    }
 
     // If insertion is successful, return success response
     return new Response("Data inserted into 'cart' successfully!", {
@@ -90,3 +73,20 @@ Deno.serve(async (req: Request) => {
   }
 });
 console.log(Deno.env.get('SUPABASE_URL'))
+
+// To invoke:
+// curl -i --location --request POST 'http://localhost:54321/functions/v1/select-from-table-with-auth-rls' \
+//   --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24ifQ.625_WdcF3KHqz5amU0x2X5WWHP-OEs_4qj0ssLNHzTs' \
+//   --header 'Content-Type: application/json' \
+//   --data '{"name":"Functions"}'
+/* To invoke locally:
+
+  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
+  2. Make an HTTP request:
+
+  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/items' \
+    --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0' \
+    --header 'Content-Type: application/json' \
+    --data '{"name":"Functions"}'
+
+*/
