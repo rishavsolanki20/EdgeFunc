@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 import { corsHeaders } from "../cors.ts";
 
-console.log(`Function items  and running!`);
+console.log(`Function items and running!`);
 
 // Define CartItem interface for type safety
 interface CartItem {
@@ -10,68 +10,110 @@ interface CartItem {
   price: number;
 }
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+// Function to create Supabase client
+function createSupabaseClient(req: Request) {
+  return createClient(
+    Deno.env.get("URL") ?? "?",
+    Deno.env.get("KEY") ?? "?",
+    {
+      headers: { Authorization: req.headers.get("Authorization")! },
+    },
+  );
+}
 
+// Function to fetch user ID from Supabase
+async function getUserId(req: Request) {
+  const supabaseClient = createSupabaseClient(req);
+  const token = req.headers.get("Authorization")?.replace("Bearer ", "");
+  const { data: { user } } = await supabaseClient.auth.getUser(token);
+  return user?.id;
+}
+
+// Function to fetch items from the "items" table
+async function fetchItems(req: Request) {
   try {
-    // Create Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get("URL") ??
-        "?",
-      Deno.env.get("KEY") ??
-        "?",
-      {
-        global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
-        },
-      },
-    );
+    const user_id = await getUserId(req);
+    const supabaseClient = createSupabaseClient(req);
 
-    // First get the token from the Authorization header
-    const token = req.headers.get("Authorization")?.replace("Bearer ", "");
-
-    // Fetch user details from Supabase
-    const { data: { user } } = await supabaseClient.auth.getUser(token);
-
-    // Get user ID
-    const user_id = user?.id;
-
-    // Fetch items from "items" table for the user
-    let { data: items, error: fetchError } = await supabaseClient
+    const { data: items, error: fetchError } = await supabaseClient
       .from("items")
       .select("*");
 
-    // Handle fetch errors
     if (fetchError) {
       console.log("Error fetching data: ", fetchError);
       throw fetchError;
     }
 
-    // If items are fetched successfully, return them
     if (items) {
-      return new Response(JSON.stringify({ user, items }), {
+      return new Response(JSON.stringify({ items }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
     }
-
-
-    // If insertion is successful, return success response
-    return new Response("Data inserted into 'cart' successfully!", {
-      headers: { ...corsHeaders },
-      status: 200,
-    });
   } catch (error) {
-    // Handle any errors
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 400,
     });
   }
+}
+
+// Function to add data to the "items" table
+async function addItem(req: Request) {
+  try {
+    const user_id = await getUserId(req);
+    const supabaseClient = createSupabaseClient(req);
+
+    const requestBody: CartItem = await req.json();
+    const { name, price } = requestBody;
+
+    const { error } = await supabaseClient.from("items").insert([
+      {
+        name,
+        price,
+        user_id,
+      },
+    ]);
+
+    if (error) {
+      console.log("Error inserting data: ", error);
+      throw error;
+    }
+
+    return new Response("Data inserted into 'items' successfully!", {
+      headers: { ...corsHeaders },
+      status: 200,
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 400,
+    });
+  }
+}
+
+// Request handler// Request handler
+Deno.serve(async (req: Request) => {  
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  if (req.method === "GET") {
+    return await fetchItems(req);
+  } else if (req.method === "POST") {
+    return await addItem(req);
+  } else {
+    return new Response("Method not allowed", {
+      headers: { ...corsHeaders },
+      status: 405,
+    });
+  }
 });
+
+
+
 console.log(Deno.env.get('SUPABASE_URL'))
+
 
 // To invoke:
 // curl -i --location --request POST 'http://localhost:54321/functions/v1/select-from-table-with-auth-rls' \
