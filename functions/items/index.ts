@@ -41,8 +41,7 @@ Deno.serve(async (req: Request) => {
     // Fetch items from "items" table for the user
     let { data: items, error: fetchError } = await supabaseClient
       .from("items")
-      .select("*")
-      .eq("user_id", user_id);
+      .select("*");
 
     // Handle fetch errors
     if (fetchError) {
