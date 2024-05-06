@@ -2,6 +2,7 @@ const express = require("express");
 const { createClient } = require("@supabase/supabase-js");
 const process = require("process");
 const cors = require("cors");
+require("dotenv").config();
 
 const app = express();
 
@@ -9,10 +10,7 @@ app.use(cors());
 app.use(express.json());
 
 // Initialize Supabase client during server startup
-const supabase = createClient(
-  "https://vlhilrmgqjuxaibhwave.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZsaGlscm1ncWp1eGFpYmh3YXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTQwMTkwODcsImV4cCI6MjAyOTU5NTA4N30.CCKs3yoZKthyTqEN7xh_DO9sMHFW7PfdoKSGCG35m5k"
-);
+const supabase = createClient(process.env.URL, process.env.KEY);
 app.post("/order", async (req, res) => {
   if (req.method === "OPTIONS") {
     // Respond to preflight requests for CORS
@@ -28,31 +26,42 @@ app.post("/order", async (req, res) => {
     } = await supabase.auth.getUser(token);
     const user_id = user?.id;
 
-    console.log("req body",req.body);
+    console.log("req body", req.body);
     const { data: orderData, error: orderError } = await supabase
       .from("orders")
       .insert({
         user_id: user_id,
-      });
-
+      })
+      .single();
     if (orderError) {
       console.error("Supabase insert error:", orderError.message);
       return res.status(500).json({ error: orderError.message });
     }
 
-    const order_id = orderData[0].id;
-    console.log("order_id",order_id)
-    for (const item of item_id) {
-      const { cart_id: item_id } = item; // Assuming each object has an 'id' field for item_id
-      await supabase
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("user_id", user_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    // Assuming 'req' is your request object and it has a 'body' property
+    const payload = req.body;
+
+    const order_id = data.id;
+
+    for (let item of payload) {
+      const { data: checkoutData, error: checkoutError } = await supabase
         .from("order-item")
         .insert({
           order_id,
-          item_id
+          item_id: item.item_id,
         });
-    }
 
-    console.log("Order created successfully:", orderData);
+      if (checkoutError) {
+        console.error(checkoutError);
+      }
+    }
 
     // Now, delete all the items associated with the user's cart
     const { data: deleteData, error: deleteError } = await supabase
@@ -75,24 +84,34 @@ app.post("/order", async (req, res) => {
 });
 
 // GET endpoint to retrieve all data from the 'orders' table
+// app.get("/order", async (req, res) => {
+//   try {
+//     // Fetch all data from the 'orders' table
+//     const { data: orderData, error: orderError } = await supabase
+//       .from("orders")
+//       .select("*");
+
+//     if (orderError) {
+//       console.error("Supabase error fetching orders:", orderError.message);
+//       return res.status(500).json({ error: orderError.message });
+//     }
+
+//     // Return the retrieved order data
+//     return res.status(200).json(orderData);
+//   } catch (error) {
+//     console.error("Internal server error:", error.message);
+//     return res.status(500).json({ error: "Internal Server Error" });
+//   }
+// });
+
 app.get("/order", async (req, res) => {
-  try {
-    // Fetch all data from the 'orders' table
-    const { data: orderData, error: orderError } = await supabase
-      .from("orders")
-      .select("*");
+  let { data: orders, error } = await supabase.from("order-item").select(`
+      order_id,
+      items ( name, price)
+    `);
 
-    if (orderError) {
-      console.error("Supabase error fetching orders:", orderError.message);
-      return res.status(500).json({ error: orderError.message });
-    }
-
-    // Return the retrieved order data
-    return res.status(200).json(orderData);
-  } catch (error) {
-    console.error("Internal server error:", error.message);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(orders);
 });
 
 app.listen(8800, () => {
