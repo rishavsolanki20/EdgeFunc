@@ -43,16 +43,18 @@ Deno.serve(async (req: Request) => {
     // If the request body contains data, insert it into the "cart" table
     if (req.body) {
       const requestBody: CartItem = await req.json();
-      const {  name, price } = requestBody;
+      const {  id, name, price } = requestBody;
 
       const { error } = await supabaseClient.from("cart").insert([
         {
+          item_id:id,
           name,
           price,
           user_id,
         },
       ]);
 
+      updateCartId(); 
       // Handle insertion errors
       if (error) {
         console.log("Error inserting data into 'cart': ", error);
@@ -81,6 +83,10 @@ Deno.serve(async (req: Request) => {
   }
 });
 
+
+function updateCartId(){
+  
+}
 
 /* To invoke locally:
 

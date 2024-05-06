@@ -80,7 +80,7 @@ async function addItem(req: Request) {
       throw error;
     }
 
-    return new Response("Data inserted into 'items' successfully!", {
+    return new Response(JSON.stringify("Data inserted into 'items' successfully!"), {
       headers: { ...corsHeaders },
       status: 200,
     });
