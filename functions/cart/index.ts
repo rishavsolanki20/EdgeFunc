@@ -1,101 +1,74 @@
-
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import express from "express";
+import { createClient } from "@supabase/supabase-js";
+require('dotenv').config();
 import { corsHeaders } from "../cors.ts";
+import {Sequelize, DataTypes} from 'sequelize';
 
-console.log(`Function cart and running!`);
 
-// Define CartItem interface for type safety
-interface CartItem {
-  id: string;
-  name: string;
-  price: number;
-  user_id: string;
-}
+const app = express();
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+app.use(express.json());
+app.use((req: any, res: any, next: any) => {
+  Object.entries(corsHeaders).forEach(([header, value]) => {
+    res.setHeader(header, value);
+  });
+  next();
+});
+const sequelize = new Sequelize(process.env.URL);
 
-  try {
-    // Create Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get("URL") ??
-        "?",
-      Deno.env.get("KEY") ??
-        "?",
-      {
-        global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
-        },
-      },
-    );
-
-    // First get the token from the Authorization header
-    const token = req.headers.get("Authorization")?.replace("Bearer ", "");
-
-    // Fetch user details from Supabase
-    const { data: { user } } = await supabaseClient.auth.getUser(token);
-
-    // Get user ID
-    const user_id = user?.id;
-
-    // If the request body contains data, insert it into the "cart" table
-    if (req.body) {
-      const requestBody: CartItem = await req.json();
-      const {  id, name, price } = requestBody;
-
-      const { error } = await supabaseClient.from("cart").insert([
-        {
-          item_id:id,
-          name,
-          price,
-          user_id,
-        },
-      ]);
-
-      updateCartId(); 
-      // Handle insertion errors
-      if (error) {
-        console.log("Error inserting data into 'cart': ", error);
-        throw error;
-      }
-
-      // If insertion is successful, return success response
-      return new Response("Data inserted into 'cart' successfully!", {
-        headers: { ...corsHeaders },
-        status: 200,
-      });
-    }
-
-    // If no data is provided in the request body, return an error response
-    return new Response("No data provided in the request body", {
-      headers: { ...corsHeaders },
-      status: 400,
-    });
-
-  } catch (error) {
-    // Handle any errors
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 400,
-    });
-  }
+// Define Sequelize model for the 'cart' table
+const Cart = sequelize.define("cart", {
+  item_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  price: {
+    type: DataTypes.FLOAT,
+    allowNull: false,
+  },
+  user_id: {
+    type: DataTypes.UUID,
+    allowNull: false,
+  },
 });
 
+// Supabase client
+const supabase = createClient(process.env.URL, process.env.KEY);
 
-function updateCartId(){
-  
-}
+// Express route handler
+app.post("/cart", async (req: any, res: any) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const { data: { user } } = await supabase.auth.getUser(token);
+    const user_id = user?.id;
 
-/* To invoke locally:
+    if (req.body) {
+      const { id, name, price } = req.body;
 
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Make an HTTP request:
+      // Insert data into the 'Cart' table using Sequelize
+      await Cart.create({
+        item_id: id,
+        name,
+        price,
+        user_id,
+      });
 
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/cart' \
-    --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0' \
-    --header 'Content-Type: application/json' \
-    --data '{"name":"Functions"}'
+      return res.status(200).send("Data inserted into 'cart' successfully!");
+    }
 
-*/
+    return res.status(400).send("No data provided in the request body");
+  } catch (error) {
+    console.error("Error:", error.message);
+    return res.status(400).json({ error: error.message });
+  }
+});
+ 
+sequelize.sync().then(() => {
+  app.listen(8000, () => {
+    console.log(`Server is running on port ${8000}`);
+  });
+});
