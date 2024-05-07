@@ -1,119 +1,126 @@
-const express = require("express");
+const express = require("express");  
 const { createClient } = require("@supabase/supabase-js");
-const process = require("process");
-const cors = require("cors");
-require("dotenv").config();
+const { Sequelize, DataTypes } = require("sequelize");
+const cors = require("cors")
+require('dotenv').config();
+
+
 
 const app = express();
 
-app.use(cors());
 app.use(express.json());
+app.use(cors())
+const sequelize = new Sequelize('postgres', 'postgres.vlhilrmgqjuxaibhwave', 'MNEq6l0IkCGVArc5', {
+  dialect: 'postgres',
+  host: 'aws-0-ap-southeast-1.pooler.supabase.com',
+});
 
-// Initialize Supabase client during server startup
-const supabase = createClient(process.env.URL, process.env.KEY);
-app.post("/order", async (req, res) => {
-  if (req.method === "OPTIONS") {
-    // Respond to preflight requests for CORS
-    res.set("Access-Control-Allow-Methods", "POST");
-    res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
-    return res.sendStatus(204); // No content
+
+// Define Sequelize model for the 'items' table
+const Item = sequelize.define('items', {
+  name: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  price: {
+    type: DataTypes.FLOAT,
+    allowNull: true
+  },
+  user_id: {
+    type: DataTypes.UUID,
+    allowNull: true
   }
+});
 
+const Cart = sequelize.define("carts", {
+  item_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  price: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+  },
+  user_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+  },
+});
+
+const supabase = createClient(process.env.URL, process.env.KEY);
+
+async function getUserId(req) {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  const { data: { user } } = await supabase.auth.getUser(token);
+  return user?.id;
+}
+
+// Express route handlers
+app.get("/items", async (req, res) => {
   try {
-    const token = req.headers.authorization.replace("Bearer ", "");
-    const {
-      data: { user },
-    } = await supabase.auth.getUser(token);
+    const user_id = await getUserId(req);
+    const items = await Item.findAll();
+    return res.status(200).json({ items });
+  } catch (error) {
+    console.error("Error:", error.message);
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.post("/items", async (req, res) => {
+  try {
+    const user_id = await getUserId(req);
+    const { name, price } = req.body;
+
+    // Create a new item using Sequelize
+    await Item.create({
+      name,
+      price,
+      user_id,
+    });
+
+    return res.status(200).json({
+      message: "Data inserted into 'items' successfully!",
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.post("/cart", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const { data: { user } } = await supabase.auth.getUser(token);
     const user_id = user?.id;
 
-    console.log("req body", req.body);
-    const { data: orderData, error: orderError } = await supabase
-      .from("orders")
-      .insert({
-        user_id: user_id,
-      })
-      .single();
-    if (orderError) {
-      console.error("Supabase insert error:", orderError.message);
-      return res.status(500).json({ error: orderError.message });
+    if (req.body) {
+      const { id, name, price } = req.body;
+
+      // Insert data into the 'Cart' table using Sequelize
+      await Cart.create({
+        item_id: id,
+        name,
+        price,
+        user_id,
+      });
+
+      return res.status(200).send("Data inserted into 'cart' successfully!");
     }
 
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("user_id", user_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-    // Assuming 'req' is your request object and it has a 'body' property
-    const payload = req.body;
-
-    const order_id = data.id;
-
-    for (let item of payload) {
-      const { data: checkoutData, error: checkoutError } = await supabase
-        .from("order-item")
-        .insert({
-          order_id,
-          item_id: item.item_id,
-        });
-
-      if (checkoutError) {
-        console.error(checkoutError);
-      }
-    }
-
-    // Now, delete all the items associated with the user's cart
-    const { data: deleteData, error: deleteError } = await supabase
-      .from("cart")
-      .delete()
-      .eq("user_id", user_id);
-
-    if (deleteError) {
-      console.error("Error deleting cart items:", deleteError.message);
-      return res.status(500).json({ error: deleteError.message });
-    }
-
-    console.log("Cart items deleted successfully:", deleteData);
-
-    return res.status(201).send("Order created successfully");
+    return res.status(400).send("No data provided in the request body");
   } catch (error) {
-    console.error("Internal server error:", error.message);
-    return res.status(500).json({ error: "Internal Server Error" });
+    console.error("Error:", error.message);
+    return res.status(400).json({ error: error.message });
   }
 });
 
-// GET endpoint to retrieve all data from the 'orders' table
-// app.get("/order", async (req, res) => {
-//   try {
-//     // Fetch all data from the 'orders' table
-//     const { data: orderData, error: orderError } = await supabase
-//       .from("orders")
-//       .select("*");
-
-//     if (orderError) {
-//       console.error("Supabase error fetching orders:", orderError.message);
-//       return res.status(500).json({ error: orderError.message });
-//     }
-
-//     // Return the retrieved order data
-//     return res.status(200).json(orderData);
-//   } catch (error) {
-//     console.error("Internal server error:", error.message);
-//     return res.status(500).json({ error: "Internal Server Error" });
-//   }
-// });
-
-app.get("/order", async (req, res) => {
-  let { data: orders, error } = await supabase.from("order-item").select(`
-      order_id,
-      items ( name, price)
-    `);
-
-  if (error) return res.status(500).json({ error: error.message });
-  return res.json(orders);
-});
-
-app.listen(8800, () => {
-  console.log("Server is running on port 8800");
+sequelize.sync().then(() => {
+  app.listen(8000, () => {
+    console.log(`Server is running on port ${8000}`);
+  });
 });
